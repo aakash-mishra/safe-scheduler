@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <profile name="sbt 1" modules="safescheduler">
+      <parameters>
+        <parameter value="-P:flowframe:lang:purpose" />
+      </parameters>
+      <plugins>
+        <plugin path="$USER_HOME$/.ivy2/local/com.facebook/flowframe_2.11.12/0.1-SNAPSHOT/jars/flowframe_2.11.12.jar" />
+      </plugins>
+    </profile>
+  </component>
+</project>
