@@ -1,22 +1,18 @@
 import java.sql.Timestamp
 
 import com.facebook.flowframe.Policy
-import org.apache.spark.sql.types.{IntegerType, StringType, StructType}
 import org.apache.spark.sql.{Dataset, SparkSession}
-import org.joda.time.DateTime
 
 @Policy("any")
 case class Event(
-                  @Policy("availability")
-                id: Int,
-                calendar_id: Int, // reference from Calendar table
-                name: String,
-                description: String,
-                  @Policy("availability")
-                start_time: Timestamp,
-                  @Policy("availability")
-                end_time: Timestamp
+                id: Int @Policy("schedule"),
+                calendar_id: Int @Policy("schedule"), // reference from Calendar table
+                name: String @Policy("secret"),
+                description: String @Policy("secret"),
+                start_time: Timestamp @Policy("schedule"),
+                end_time: Timestamp @Policy("schedule")
                 )
+
 
 object Event {
   def apply(spark: SparkSession): Dataset[Event] = {

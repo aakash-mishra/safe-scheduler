@@ -4,13 +4,11 @@ import org.apache.spark.sql.{Dataset, SparkSession}
 // a user can have multiple calendars
 @Policy("any")
 case class Calendar(
-                     @Policy("schedule")
-                   id: Int,
-                     @Policy("schedule")
-                   user_id: Int, // reference from User table
-                   name: String,
-                     @Policy("schedule")
-                   timezone: String
+
+                   id: Int @Policy("schedule"),
+                   user_id: Int @Policy("schedule"), // reference from User table
+                   name: String @Policy("secret"),
+                   timezone: String @Policy("schedule")
                    )
 
 object Calendar {

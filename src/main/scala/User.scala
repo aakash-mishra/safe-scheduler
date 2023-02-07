@@ -1,14 +1,13 @@
 import com.facebook.flowframe.Policy
-import org.apache.spark.sql.types.{IntegerType, StringType, StructType}
-import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.{Dataset, SparkSession}
 
 @Policy("any")
 case class User(
-               @Policy("schedule")
-               id: Int,
-               name: String,
-               email: Option[String]
+               id: Int @Policy("schedule"),
+               name: String @Policy(value = "secret"),
+               email: String @Policy(value = "secret")
                )
+
 
 object User {
   def apply(spark: SparkSession): Dataset[User] = {

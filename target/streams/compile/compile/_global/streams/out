@@ -1,0 +1,23 @@
+[0m[[0m[0mdebug[0m] [0m[0mAcquiring lock on file /Users/aakash/aakash/Flowframe/safe-scheduler/project/target/.sbt-compilation-infos/safe-scheduler-compile/.sbt-idea-lock ...[0m
+[0m[[0m[0minfo[0m] [0m[0m/Users/aakash/aakash/Flowframe/safe-scheduler/src/main/scala/Calendar.scala has succeeded FlowFrame pass as expected[0m
+[0m[[0m[0minfo[0m] [0m[0mFlowframe has failed on /Users/aakash/aakash/Flowframe/safe-scheduler/src/main/scala/Driver.scala[0m
+[0m[[0m[0minfo[0m] [0m[0mVal definition RHS Policy Violation[0m
+[0m[[0m[0minfo[0m] [0m[0mThe policy of the RHS is more restrictive than the policy of the `def` declaration.[0m
+[0m[[0m[0minfo[0m] [0m[0m[0m
+[0m[[0m[0minfo[0m] [0m[0m/Users/aakash/aakash/Flowframe/safe-scheduler/src/main/scala/Driver.scala[0m
+[0m[[0m[0minfo[0m] [0m[0m        39 [0m
+[0m[[0m[0minfo[0m] [0m[0m        40 //    /* expecting a flowframe error here[0m
+[0m[[0m[0minfo[0m] [0m[0m        41     @Policy("any")[0m
+[0m[[0m[0minfo[0m] [0m[0m>>>>    42     val aakashPersonalCal = calendar.filter(cal => cal.name == "aakash-personal")[0m
+[0m[[0m[0minfo[0m] [0m[0m        43     val aakashUserId = users.select("id").as[Int].collectAsList().get(0)[0m
+[0m[[0m[0minfo[0m] [0m[0m        44     aakashPersonalCal.filter(cal => cal.user_id == aakashUserId).show()[0m
+[0m[[0m[0minfo[0m] [0m[0m        45 //    */[0m
+[0m[[0m[0minfo[0m] [0m[0m[0m
+[0m[[0m[0minfo[0m] [0m[0mConstraint:[0m
+[0m[[0m[0minfo[0m] [0m[0m{(((Driver.$anonfun$begin:79) and (secret)) and (Driver.findSuitableTime$begin:57)) and (Driver.findSuitableTime.calendar:58) <= any}[0m
+[0m[[0m[0minfo[0m] [0m[0mSubstitutions:[0m
+[0m[[0m[0minfo[0m] [0m[0mDriver.$anonfun$begin:79 = any[0m
+[0m[[0m[0minfo[0m] [0m[0mDriver.findSuitableTime$begin:57 = any[0m
+[0m[[0m[0minfo[0m] [0m[0mDriver.findSuitableTime.calendar:58 = any[0m
+[0m[[0m[0minfo[0m] [0m[0m[0m
+[0m[[0m[0mdebug[0m] [0m[0mReleasing lock on file /Users/aakash/aakash/Flowframe/safe-scheduler/project/target/.sbt-compilation-infos/safe-scheduler-compile/.sbt-idea-lock.[0m
