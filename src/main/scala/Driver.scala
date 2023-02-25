@@ -1,10 +1,10 @@
 import java.sql.Timestamp
 import java.text.SimpleDateFormat
 
-import org.apache.spark.sql.{Dataset, SparkSession}
+import com.facebook.flowframe.Policy
+import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 
 import scala.annotation.tailrec
-import scala.runtime.Nothing$
 
 
 object Driver {
@@ -13,21 +13,42 @@ object Driver {
     val spark = SparkSession.builder.appName("SafeScheduler")
       .master("local[1]")
       .getOrCreate()
+
     spark.sparkContext.setLogLevel("ERROR")
-    val userTable = User(spark)
-    val calendarTable = Calendar(spark)
     val eventTable = Event(spark)
-    eventTable.show()
-    val proposedMeetingDate = "2023-01-20"
-    val conflictFreeTimes = findSuitableTime(calendarTable, userTable, eventTable, spark, proposedMeetingDate)
-//    createEvent(conflictFreeTimes, userTable, calendarTable)
+    val proposedMeetingDate = "2023-01-19"
+    val conflictFreeTimes = findSuitableTime(eventTable, spark, proposedMeetingDate)
+    createEvent(spark, eventTable, conflictFreeTimes)
   }
 
-  def createEvent(conflictFreeTimes: List[java.util.Calendar], user: Dataset[User], calendar: Dataset[Calendar]): Unit = {
-    val startTs = conflictFreeTimes.head.toInstant
-    val endTs = conflictFreeTimes(1).toInstant
-    val event = new Event(10,1,"test",
-      "test description",Timestamp.from(startTs), Timestamp.from(endTs))
+  def createEvent(sparkSession: SparkSession, event: Dataset[Event], conflictFreeTimes: List[java.util.Calendar]): Unit = {
+    import sparkSession.implicits._
+    import org.apache.spark.sql.functions.col
+
+    val startTs = new Timestamp(conflictFreeTimes.head.getTimeInMillis)
+    val endTs = new Timestamp(conflictFreeTimes(1).getTimeInMillis)
+    val max = event.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
+    // testing flowframe
+//    policy = calendar::secret
+//    val aakashEvents = event.filter(ev => ev.id == 1)
+//    @Policy("calendar")
+    val aakashEvents = event.filter(ev => ev.name.contains("aakash"))
+    // expecting error here.
+    val mappedEvents = aakashEvents.map(ev => Event(ev.id + 1, 1, "aakash",
+      ev.name, ev.description, ev.start_time, ev.end_time)).write.saveAsTable("aakashEvents")
+    val newEvent = Event(max + 1,1,"aakash",
+  "test name", "test desc", startTs, endTs)
+    val newEventDataset = Seq(newEvent).toDF().as[Event]
+    newEventDataset.show()
+    newEventDataset.write
+      .mode(SaveMode.Append)
+      .format("jdbc")
+      .option("driver","com.mysql.cj.jdbc.Driver")
+      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
+      .option("dbtable", "Event")
+      .option("user", "root")
+      .option("password", "")
+      .save()
   }
 
   def calendarToString(cal: java.util.Calendar): String = {
@@ -65,55 +86,25 @@ object Driver {
         endTime.setTimeInMillis(head.end_time.getTime)
         val internalCalendarList = removeConflict(startTime, endTime, calendarList, List()).reverse
         getCalendarList(rest, internalCalendarList)
-      case _ => calendarList
-    }
-  }
-
-  @tailrec
-  def printEvents(events: List[Event]) : Unit = {
-    events match {
-      case Nil => println("")
-      case head :: rest =>
-        println("Name: " ++ head.name ++ "Description: " ++ head.description)
-        printEvents(rest)
     }
   }
 
   // returns all possible 30-minute meeting slots with no conflict between invitees
-  def findSuitableTime(calendar: Dataset[Calendar], users: Dataset[User], event: Dataset[Event], sparkSession: SparkSession, proposedMeetingDate: String):
+  def findSuitableTime(event: Dataset[Event], sparkSession: SparkSession, proposedMeetingDate: String):
   List[java.util.Calendar] = {
-    import sparkSession.implicits._
-    val joinCondition = users.col("id") === calendar.col("user_id")
-    val inviteeCalendars = calendar.join(users, joinCondition, "left_semi")
-
-    val inviteeEvents = event.join(inviteeCalendars, event.col("calendar_id") === inviteeCalendars.col("id"),
-      "left_semi").as[Event]
-    // filter events belonging to the proposed meeting date
-    val inviteeEventsOnMeetingDate = inviteeEvents.filter(event => toDate(event.start_time.getTime) == proposedMeetingDate)
+    val inviteeEventsOnMeetingDate = event.filter(event => toDate(event.start_time.getTime) == proposedMeetingDate)
     var calendarList: List[java.util.Calendar] = List()
     sparkSession.sparkContext.broadcast(calendarList)
     val dateTokens = proposedMeetingDate.split("-")
     calendarList = createStaticCalendar(calendarList, dateTokens, 0).reverse
 
-    println("First calendar value " + calendarToString(calendarList.head))
-    println("Last calendar value " + calendarToString(calendarList.last))
-    // idea is: for each event, iterate through the static calendar list and remove items from it
-    // if a conflict exists.
+    // for each event, iterate through the static calendar list and remove items from it if a conflict exists.
     import scala.collection.JavaConverters._
     val eventsCollected = inviteeEventsOnMeetingDate.collectAsList()
     val eventsCollectedList = eventsCollected.asScala.toList
-    getCalendarList(eventsCollectedList, calendarList)
-
-
-    // convert this to a recursive function -- done
-//    eventsCollected.foreach(event => {
-//      val startTime = java.util.Calendar.getInstance();
-//      startTime.setTimeInMillis(event.start_time.getTime);
-//      println("Start time of this event: " + calendarToString(startTime))
-//      val endTime = java.util.Calendar.getInstance();
-//      endTime.setTimeInMillis(event.end_time.getTime);
-//      calendarList = removeConflict(startTime, endTime, calendarList, List()).reverse
-//    })
+    val calendarListF = getCalendarList(eventsCollectedList, calendarList)
+    println(calendarListToString(calendarListF))
+    calendarListF
       }
 
   def calendarListToString(calendarList: List[java.util.Calendar]): String = {

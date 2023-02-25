@@ -3,16 +3,15 @@ import java.sql.Timestamp
 import com.facebook.flowframe.Policy
 import org.apache.spark.sql.{Dataset, SparkSession}
 
-@Policy("any")
 case class Event(
-                id: Int @Policy("schedule"),
-                calendar_id: Int @Policy("schedule"), // reference from Calendar table
-                name: String @Policy("secret"),
-                description: String @Policy("secret"),
-                start_time: Timestamp @Policy("schedule"),
-                end_time: Timestamp @Policy("schedule")
+                id: Int @Policy("calendar"),
+                user_id: Int @Policy("calendar"),
+                user_name: String @Policy("calendar::secret"),
+                name: String @Policy("calendar::secret"),
+                description: String @Policy("calendar::secret"),
+                start_time: Timestamp @Policy("calendar"),
+                end_time: Timestamp @Policy("calendar")
                 )
-
 
 object Event {
   def apply(spark: SparkSession): Dataset[Event] = {
