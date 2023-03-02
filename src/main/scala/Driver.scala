@@ -1,7 +1,6 @@
 import java.sql.Timestamp
 import java.text.SimpleDateFormat
 
-import com.facebook.flowframe.Policy
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 
 import scala.annotation.tailrec
@@ -30,25 +29,28 @@ object Driver {
     val max = event.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
     // testing flowframe
 //    policy = calendar::secret
-//    val aakashEvents = event.filter(ev => ev.id == 1)
-//    @Policy("calendar")
-    val aakashEvents = event.filter(ev => ev.name.contains("aakash"))
+//    @Policy("calendar::secret")
+//    val aakashEvents = event.filter(ev => ev.name.contains("aakash"))
     // expecting error here.
-    val mappedEvents = aakashEvents.map(ev => Event(ev.id + 1, 1, "aakash",
-      ev.name, ev.description, ev.start_time, ev.end_time)).write.saveAsTable("aakashEvents")
+//    val mappedEvents = aakashEvents.map(ev => Event(ev.id + 1, 1, "aakash",
+//      ev.name, ev.description, ev.start_time, ev.end_time)).write.saveAsTable("aakashEvents")
+
+
+//    val newEvent = Event(max + 1,1,userName,
+//      eventName, eventDesc, start, end)
     val newEvent = Event(max + 1,1,"aakash",
-  "test name", "test desc", startTs, endTs)
-    val newEventDataset = Seq(newEvent).toDF().as[Event]
-    newEventDataset.show()
-    newEventDataset.write
-      .mode(SaveMode.Append)
-      .format("jdbc")
-      .option("driver","com.mysql.cj.jdbc.Driver")
-      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-      .option("dbtable", "Event")
-      .option("user", "root")
-      .option("password", "")
-      .save()
+      "test event", "test event desc", startTs, endTs)
+//    val newEventDataset = Seq(newEvent).toDF().as[Event]
+//    newEventDataset.show()
+//    newEventDataset.write
+//      .mode(SaveMode.Append)
+//      .format("jdbc")
+//      .option("driver","com.mysql.cj.jdbc.Driver")
+//      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
+//      .option("dbtable", "Event")
+//      .option("user", "root")
+//      .option("password", "")
+//      .save()
   }
 
   def calendarToString(cal: java.util.Calendar): String = {
@@ -61,6 +63,7 @@ object Driver {
 //          cal.get(java.util.Calendar.SECOND)
   }
 
+  // creates a calendar list starting at 9 am and ending at 11 pm
   @tailrec
   def createStaticCalendar(list: List[java.util.Calendar], dateTokens: Array[String], minuteCounter: Int): List[java.util.Calendar] = {
     if(list.length == 29)
@@ -70,6 +73,7 @@ object Driver {
       cal.set(Integer.parseInt(dateTokens(0)), Integer.parseInt(dateTokens(1)) - 1,
         Integer.parseInt(dateTokens(2)), 9, 0, 0)
       cal.add(java.util.Calendar.MINUTE, minuteCounter)
+      cal.set(java.util.Calendar.MILLISECOND, 0)
       // making 30 minute strides
       createStaticCalendar(cal :: list, dateTokens, minuteCounter + 30)
     }
@@ -84,8 +88,8 @@ object Driver {
         startTime.setTimeInMillis(head.start_time.getTime)
         val endTime = java.util.Calendar.getInstance()
         endTime.setTimeInMillis(head.end_time.getTime)
-        val internalCalendarList = removeConflict(startTime, endTime, calendarList, List()).reverse
-        getCalendarList(rest, internalCalendarList)
+        val conflictFreeCalendarList = removeConflict(startTime, endTime, calendarList, List()).reverse
+        getCalendarList(rest, conflictFreeCalendarList)
     }
   }
 
@@ -94,7 +98,6 @@ object Driver {
   List[java.util.Calendar] = {
     val inviteeEventsOnMeetingDate = event.filter(event => toDate(event.start_time.getTime) == proposedMeetingDate)
     var calendarList: List[java.util.Calendar] = List()
-    sparkSession.sparkContext.broadcast(calendarList)
     val dateTokens = proposedMeetingDate.split("-")
     calendarList = createStaticCalendar(calendarList, dateTokens, 0).reverse
 
@@ -102,6 +105,7 @@ object Driver {
     import scala.collection.JavaConverters._
     val eventsCollected = inviteeEventsOnMeetingDate.collectAsList()
     val eventsCollectedList = eventsCollected.asScala.toList
+
     val calendarListF = getCalendarList(eventsCollectedList, calendarList)
     println(calendarListToString(calendarListF))
     calendarListF
@@ -119,28 +123,32 @@ object Driver {
     new SimpleDateFormat("yyyy-MM-dd").format(date)
   }
 
-  def toDate(date: java.util.Date): String = {
-    new SimpleDateFormat("yyyy-MM-dd").format(date)
-  }
 
   @tailrec
   def removeConflict(startTime:java.util.Calendar,
                              endTime: java.util.Calendar, calendarList: List[java.util.Calendar], acc: List[java.util.Calendar]):
   List[java.util.Calendar] = {
     calendarList match {
-      // ex: 6:00 :: 6:30 :: [7,7:30,8...]
-      // if there are < 2 items in the list, return acc
       case Nil => acc
       case strideHead :: strideNext :: rest =>
-        if((strideHead.before(startTime) && strideNext.after(startTime)) ||
-        strideHead.after(startTime) && strideHead.before(endTime)) {
-          // if conflict exists, dont add this cal instance to the acc
+        var nextStride = strideNext
+        val difference = strideNext.getTimeInMillis - strideHead.getTimeInMillis
+        val diffInMins = difference / (60 * 1000)
+        if(diffInMins > 30) {
+          nextStride = java.util.Calendar.getInstance()
+          nextStride.setTimeInMillis(strideHead.getTimeInMillis)
+          nextStride.add(java.util.Calendar.MINUTE, 30)
+        }
+        if((strideHead.before(startTime) && nextStride.after(startTime)) ||
+        !strideHead.before(startTime) && strideHead.before(endTime)) {
+          // conflict exists, dont add this strideHead instance to the acc
           removeConflict(startTime, endTime, strideNext :: rest, acc)
         } else {
+          // no conflict with this strideHead
           removeConflict(startTime, endTime, strideNext :: rest, strideHead :: acc)
         }
-      // if there are < 2 items in the list, return acc
-      case strideHead :: rest => acc
+
+      case strideHead :: rest => strideHead :: acc
     }
   }
 }
