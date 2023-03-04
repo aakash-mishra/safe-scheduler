@@ -19,16 +19,18 @@ object Driver {
     spark.sparkContext.setLogLevel("ERROR")
     println("Welcome to Safe scheduler! \n")
     // uncomment below to accept meeting date from StdIn
-//    print("Please enter the meeting date in (yyyy-MM-dd) format: ")
-//    val proposedMeetingDate = StdIn.readLine()
-    val proposedMeetingDate = "2023-01-19"
+    print("Please enter the meeting date in (yyyy-MM-dd) format: ")
+    val proposedMeetingDate = StdIn.readLine()
+//    val proposedMeetingDate = "2023-01-19"
     println("\nOk. Proposed meeting date is: " ++ proposedMeetingDate)
     println("Enter your name: ")
     val meetingOwner = StdIn.readLine()
     println(s"Enter the name of the person you want to set-up a meeting with (invitee): ")
     val invitee = StdIn.readLine()
     val eventTable = Event(spark)
+    @Policy("any")
     val inviteeEvents = filterInviteeEvents(eventTable, invitee, meetingOwner)
+//    @Policy("any")
     val conflictFreeTimes = findSuitableTime(inviteeEvents, spark, proposedMeetingDate)
     println("Here is a list of available meeting start times (between 9 AM and 11 PM) on the proposed meeting date:")
     printAvailableTimes(conflictFreeTimes, 1)
@@ -39,10 +41,13 @@ object Driver {
     println("Enter event description: ")
     val meetingDescription = StdIn.readLine()
     createEvent(spark, eventTable, conflictFreeTimes, meetingIndex, meetingName, meetingDescription, meetingOwner, invitee)
+
   }
 
   def filterInviteeEvents(event: Dataset[Event], invitee: String, owner: String): Dataset[Event] = {
-      event.filter(ev => ev.user_name == owner || ev.user_name == invitee)
+//      val practiceEvents = event.filter(ev => ev.name.contains("practice"))
+//      practiceEvents.filter(ev => ev.user_name == owner || ev.user_name == invitee)
+    event.filter(ev => ev.user_name == owner || ev.user_name == invitee)
     }
 
   @tailrec
@@ -63,11 +68,14 @@ object Driver {
     val endTs = new Timestamp(conflictFreeTimes(meetingIndex).getTimeInMillis)
     val max = event.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
     // this FAILS bcos ev.name has a policy as restrictive as "calendar"
-    val eventsFilteredOnEventName = event.filter(ev => ev.name == "practice").first()
-    val ownerId = event.filter(ev => ev.user_name == meetingOwner).first()
-    val ownerEvent = new Event(max + 1, ownerId.user_id,meetingOwner,
+//    val eventsFilteredOnEventName = event.filter(ev => ev.name == "practice")
+//    val ownerEventObject = new Event(max + 1, eventFilteredOnEventName.user_id,meetingOwner,
+//      meetingName, meetingDescription, startTs, endTs)
+
+    val ownerEvent = event.filter(ev => ev.user_name == meetingOwner).first()
+    val ownerEventObject = new Event(max + 1, ownerEvent.user_id,meetingOwner,
   meetingName, meetingDescription, startTs, endTs)
-    val ownerEventDataset = Seq(ownerEvent).toDF().as[Event]
+    val ownerEventDataset = Seq(ownerEventObject).toDF().as[Event]
     ownerEventDataset.write
       .mode(SaveMode.Append)
       .format("jdbc")
@@ -92,6 +100,11 @@ object Driver {
       .option("user", "root")
       .option("password", "")
       .save()
+    println("Event created successfully. Event details:")
+    println("Event name: " + meetingName)
+    println("Event description: " + meetingDescription)
+    println("Event start time: " + dateToCompleteString(startTs.getTime))
+    println("Event end time: " + dateToCompleteString(endTs.getTime))
   }
 
   def calendarToString(cal: Calendar): String = {
@@ -118,15 +131,20 @@ object Driver {
     }
   }
 
+  // use fold here
   @tailrec
   def getCalendarList(event: List[Event], calendarList: List[Calendar]): List[Calendar] = {
     event match {
       case Nil => calendarList
       case head :: rest =>
+        // st : 6
+        // end: 7
+//        [...430, 5, 530, 6, 630, 7]
         val startTime = Calendar.getInstance()
         startTime.setTimeInMillis(head.start_time.getTime)
         val endTime = Calendar.getInstance()
         endTime.setTimeInMillis(head.end_time.getTime)
+        // fold:
         val conflictFreeCalendarList = removeConflict(startTime, endTime, calendarList, List()).reverse
         getCalendarList(rest, conflictFreeCalendarList)
     }
@@ -135,7 +153,10 @@ object Driver {
   // returns all possible 30-minute meeting slots with no conflict between invitees
   def findSuitableTime(event: Dataset[Event], sparkSession: SparkSession, proposedMeetingDate: String):
   List[Calendar] = {
+//    @Policy("any")
     val inviteeEventsOnMeetingDate = event.filter(event => dateToString(event.start_time.getTime) == proposedMeetingDate)
+      .filter(ev => ev.name.contains("practice"))
+//    val practiceEvents = event.filter(ev => ev.name.contains("practice"))
     var calendarList: List[Calendar] = List()
     val dateTokens = proposedMeetingDate.split("-")
     calendarList = createStaticCalendar(calendarList, dateTokens, 0).reverse
@@ -144,9 +165,9 @@ object Driver {
     import scala.collection.JavaConverters._
     val eventsCollected = inviteeEventsOnMeetingDate.collectAsList()
     val eventsCollectedList = eventsCollected.asScala.toList
-
-    val calendarListF = getCalendarList(eventsCollectedList, calendarList)
-    calendarListF
+//    val calendarListF = getCalendarList(eventsCollectedList, calendarList)
+    getCalendarList(eventsCollectedList, calendarList)
+//    calendarListF
       }
 
   def dateToString(timestamp: Long): String = {
@@ -154,10 +175,35 @@ object Driver {
     new SimpleDateFormat("yyyy-MM-dd").format(date)
   }
 
+  def dateToCompleteString(timestamp: Long): String = {
+    val date = new java.util.Date(timestamp)
+    new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date)
+  }
+
+  // use filter here
   @tailrec
   def removeConflict(startTime:Calendar,
                              endTime: Calendar, calendarList: List[Calendar], acc: List[Calendar]):
   List[Calendar] = {
+
+    // calendarList : [9, 930, 10...]
+//    calendarList.filter(cal => var nextStride = strideNext
+//    val difference = strideNext.getTimeInMillis - strideHead.getTimeInMillis
+//    val diffInMins = difference / (60 * 1000)
+//    if(diffInMins > 30) {
+//      nextStride = Calendar.getInstance()
+//      nextStride.setTimeInMillis(strideHead.getTimeInMillis)
+//      nextStride.add(Calendar.MINUTE, 30)
+//    }
+//    if((strideHead.before(startTime) && nextStride.after(startTime)) ||
+//      !strideHead.before(startTime) && strideHead.before(endTime))
+//    )
+
+//    [9, 930, 1030]
+    // [6, 7] -- aak
+    // [6, 7] -- adi
+    // [430, 5, 7]
+
     calendarList match {
       case Nil => acc
       case strideHead :: strideNext :: rest =>
