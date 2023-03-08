@@ -11,13 +11,6 @@ case class Event(
                 description: String @Policy("secret"),
                 start_time: Timestamp @Policy("any"),
                 end_time: Timestamp @Policy("any")
-//                  id: Int @Policy("calendar"),
-//                  user_id: Int @Policy("calendar"),
-//                  user_name: String @Policy("calendar"),
-//                  name: String @Policy("calendar::secret"),
-//                  description: String @Policy("calendar::secret"),
-//                  start_time: Timestamp @Policy("calendar"),
-//                  end_time: Timestamp @Policy("calendar")
                 )
 
 object Event {

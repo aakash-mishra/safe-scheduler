@@ -11,13 +11,6 @@ case class ChessEvent(
                        description: String @Policy("secret"),
                        start_time: Timestamp @Policy("any"),
                        end_time: Timestamp @Policy("any")
-//                     id: Int @Policy("calendar"),
-//                     player1: String @Policy("calendar"),
-//                     player2: String @Policy("calendar"),
-//                     name: String @Policy("calendar::secret"),
-//                     description: String @Policy("calendar::secret"),
-//                     start_time: Timestamp @Policy("calendar"),
-//                     end_time: Timestamp @Policy("calendar")
                      )
 
 object ChessEvent {

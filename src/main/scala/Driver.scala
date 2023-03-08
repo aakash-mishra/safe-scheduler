@@ -28,7 +28,8 @@ object Driver {
     println(s"Enter the name of the person you want to set-up a chess event with (player 2): ")
     val invitee = StdIn.readLine()
     val eventTable = Event(spark)
-    val inviteeEvents = filterInviteeEvents(eventTable, invitee, meetingOwner)
+    val inviteeEvents = eventTable.filter(ev => ev.user_name == meetingOwner || ev.user_name == invitee)
+//    val inviteeEvents = filterInviteeEvents(eventTable, invitee, meetingOwner)
     val conflictFreeTimes = findSuitableTime(inviteeEvents, spark, proposedMeetingDate)
     println("Here is a list of 30-minute slots (between 9 AM and 11 PM) where both player 1 and player 2 are available:")
     printAvailableTimes(conflictFreeTimes, 1)
@@ -42,9 +43,9 @@ object Driver {
     createEvent(spark, eventTable, conflictFreeTimes, meetingIndex, meetingName, meetingDescription, meetingOwner, invitee, chessEventDs)
   }
 
-  def filterInviteeEvents(event: Dataset[Event], invitee: String, owner: String): Dataset[Event] = {
-    event.filter(ev => ev.user_name == owner || ev.user_name == invitee)
-    }
+//  def filterInviteeEvents(event: Dataset[Event], invitee: String, owner: String): Dataset[Event] = {
+//    event.filter(ev => ev.user_name == owner || ev.user_name == invitee)
+//    }
 
   @tailrec
   def printAvailableTimes(calendars: List[Calendar], index: Int): Unit = {
@@ -62,9 +63,9 @@ object Driver {
     import sparkSession.implicits._
     import org.apache.spark.sql.functions.col
 //    @Policy("any")
+
     val startTs = new Timestamp(conflictFreeTimes(meetingIndex - 1).getTimeInMillis)
     val endTs = new Timestamp(conflictFreeTimes(meetingIndex).getTimeInMillis)
-//    val max = event.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
     val max = chessEvent.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
     val player1Event = event.filter(ev => ev.user_name == meetingOwner).first()
     val player2Event = event.filter(ev => ev.user_name == invitee).first()
@@ -76,6 +77,10 @@ object Driver {
 
     val newChessEvent = new ChessEvent(meetingId, player1Name, player2Name, chessMeetingName, chessMeetingDescription,
       startTs, endTs)
+
+//    val player1FilteredOnName = event.filter(ev => ev.name.contains("therapy") && ev.user_name == meetingOwner).first()
+//    val newChessEvent = new ChessEvent(meetingId, player1FilteredOnName.user_name, player2Name, chessMeetingName, chessMeetingDescription,
+//          startTs, endTs)
     val newRow = Seq(newChessEvent).toDS()
     newRow.write
               .mode(SaveMode.Append)
@@ -86,49 +91,9 @@ object Driver {
               .option("user", "root")
               .option("password", "")
               .save()
-//    newRow.write
-//          .mode(SaveMode.Append)
-//          .format("jdbc")
-//          .option("driver","com.mysql.cj.jdbc.Driver")
-//          .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-//          .option("dbtable", "ChessEvent")
-//          .option("user", "root")
-//          .option("password", "")
-//          .save()
 
-    //    val ownerEvent = event.filter(ev => ev.user_name == meetingOwner).first()
-//    val ownerEventObject = new Event(max + 1, ownerEvent.user_id,meetingOwner,
-//  meetingName, meetingDescription, startTs, endTs)
-//    val ownerEventDataset = Seq(ownerEventObject).toDF().as[Event]
-//    ownerEventDataset.write
-//      .mode(SaveMode.Append)
-//      .format("jdbc")
-//      .option("driver","com.mysql.cj.jdbc.Driver")
-//      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-//      .option("dbtable", "Event")
-//      .option("user", "root")
-//      .option("password", "")
-//      .save()
-//
-//    // inviteeEvent
-//    val inviteeId = event.filter(ev => ev.user_name == invitee).first()
-//    val inviteeEvent = new Event(max + 2,inviteeId.user_id,invitee,
-//      meetingName, meetingDescription, startTs, endTs)
-//    val inviteeEventDataset = Seq(inviteeEvent).toDF().as[Event]
-//    inviteeEventDataset.write
-//      .mode(SaveMode.Append)
-//      .format("jdbc")
-//      .option("driver","com.mysql.cj.jdbc.Driver")
-//      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-//      .option("dbtable", "Event")
-//      .option("user", "root")
-//      .option("password", "")
-//      .save()
     println("Event created successfully. Event details:")
-    println("Event name: " + meetingName)
-//    println("Event description: " + meetingDescription)
-//    println("Event start time: " + dateToCompleteString(startTs.getTime))
-//    println("Event end time: " + dateToCompleteString(endTs.getTime))
+    println("Event name: " + chessMeetingName)
   }
 
   def calendarToString(cal: Calendar): String = {
@@ -174,25 +139,18 @@ object Driver {
     }
   }
 
-  // returns all possible 30-minute meeting slots with no conflict between invitees
+  // returns all possible 30-minute meeting slots with no conflict between player 1 and player 2
   def findSuitableTime(event: Dataset[Event], sparkSession: SparkSession, proposedMeetingDate: String):
   List[Calendar] = {
-
     val inviteeEventsOnMeetingDate = event.filter(event => dateToString(event.start_time.getTime) == proposedMeetingDate)
-
-
-//    val practiceEvents = event.filter(ev => ev.name.contains("practice"))
     var calendarList: List[Calendar] = List()
     val dateTokens = proposedMeetingDate.split("-")
     calendarList = createStaticCalendar(calendarList, dateTokens, 0).reverse
-
-    // for each event, iterate through the static calendar list and remove items from it if a conflict exists.
     import scala.collection.JavaConverters._
     val eventsCollected = inviteeEventsOnMeetingDate.collectAsList()
     val eventsCollectedList = eventsCollected.asScala.toList
-//    val calendarListF = getCalendarList(eventsCollectedList, calendarList)
+    // for each event, iterate through the static calendar list and remove items from it if a conflict exists.
     getCalendarList(eventsCollectedList, calendarList)
-//    calendarListF
       }
 
   def dateToString(timestamp: Long): String = {
@@ -210,7 +168,8 @@ object Driver {
   def removeConflict(startTime:Calendar,
                              endTime: Calendar, calendarList: List[Calendar], acc: List[Calendar]):
   List[Calendar] = {
-
+//    println("Attempting to remove conflicts from calendarList")
+//    println("Starting...")
 //    val filteredCalendarDs = calendarList.filter(cal => {
 //      val strideHead = cal
 //      val nextStride = Calendar.getInstance()
@@ -220,6 +179,8 @@ object Driver {
 //      // cond2: if strideHead is after the end time, then there's no conflict
 //      (strideHead.before(startTime) && !nextStride.after(startTime)) || strideHead.after(endTime)
 //    })
+//    println("Removed conflicts from calendarList")
+//    println("Exiting...")
 //    filteredCalendarDs
 //  }
 
