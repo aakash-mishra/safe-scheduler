@@ -19,34 +19,30 @@ object Driver {
     spark.sparkContext.setLogLevel("ERROR")
     println("Welcome to Safe scheduler! \n")
     // uncomment below to accept meeting date from StdIn
-    print("Please enter the meeting date in (yyyy-MM-dd) format: ")
+    println("Please enter the meeting date in (yyyy-MM-dd) format: ")
     val proposedMeetingDate = StdIn.readLine()
 //    val proposedMeetingDate = "2023-01-19"
-    println("\nOk. Proposed meeting date is: " ++ proposedMeetingDate)
-    println("Enter your name: ")
+    println("Ok. Proposed meeting date is: " ++ proposedMeetingDate)
+    println("Enter your name (player 1): ")
     val meetingOwner = StdIn.readLine()
-    println(s"Enter the name of the person you want to set-up a meeting with (invitee): ")
+    println(s"Enter the name of the person you want to set-up a chess event with (player 2): ")
     val invitee = StdIn.readLine()
     val eventTable = Event(spark)
-    @Policy("any")
     val inviteeEvents = filterInviteeEvents(eventTable, invitee, meetingOwner)
-//    @Policy("any")
     val conflictFreeTimes = findSuitableTime(inviteeEvents, spark, proposedMeetingDate)
-    println("Here is a list of available meeting start times (between 9 AM and 11 PM) on the proposed meeting date:")
+    println("Here is a list of 30-minute slots (between 9 AM and 11 PM) where both player 1 and player 2 are available:")
     printAvailableTimes(conflictFreeTimes, 1)
-    println("Now, enter the index of the meeting start time (as it appears in the square bracket to the left) to set-up a 30-minute meeting: ")
+    println("Now, enter the index of the meeting start time (as it appears in the square bracket to the left) to set-up the challenge: ")
     val meetingIndex = StdIn.readInt()
-    println("Enter event name: ")
+    println("Enter the event name: ")
     val meetingName = StdIn.readLine()
-    println("Enter event description: ")
+    println("Enter the event description: ")
     val meetingDescription = StdIn.readLine()
-    createEvent(spark, eventTable, conflictFreeTimes, meetingIndex, meetingName, meetingDescription, meetingOwner, invitee)
-
+    val chessEventDs = ChessEvent(spark)
+    createEvent(spark, eventTable, conflictFreeTimes, meetingIndex, meetingName, meetingDescription, meetingOwner, invitee, chessEventDs)
   }
 
   def filterInviteeEvents(event: Dataset[Event], invitee: String, owner: String): Dataset[Event] = {
-//      val practiceEvents = event.filter(ev => ev.name.contains("practice"))
-//      practiceEvents.filter(ev => ev.user_name == owner || ev.user_name == invitee)
     event.filter(ev => ev.user_name == owner || ev.user_name == invitee)
     }
 
@@ -61,50 +57,78 @@ object Driver {
   }
 
   def createEvent(sparkSession: SparkSession, event: Dataset[Event], conflictFreeTimes: List[java.util.Calendar],
-                  meetingIndex: Int, meetingName: String, meetingDescription: String, meetingOwner: String, invitee: String): Unit = {
+                  meetingIndex: Int, meetingName: String, meetingDescription: String, meetingOwner: String, invitee: String,
+                  chessEvent: Dataset[ChessEvent]): Unit = {
     import sparkSession.implicits._
     import org.apache.spark.sql.functions.col
+//    @Policy("any")
     val startTs = new Timestamp(conflictFreeTimes(meetingIndex - 1).getTimeInMillis)
     val endTs = new Timestamp(conflictFreeTimes(meetingIndex).getTimeInMillis)
-    val max = event.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
-    // this FAILS bcos ev.name has a policy as restrictive as "calendar"
-//    val eventsFilteredOnEventName = event.filter(ev => ev.name == "practice")
-//    val ownerEventObject = new Event(max + 1, eventFilteredOnEventName.user_id,meetingOwner,
+//    val max = event.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
+    val max = chessEvent.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
+    val player1Event = event.filter(ev => ev.user_name == meetingOwner).first()
+    val player2Event = event.filter(ev => ev.user_name == invitee).first()
+    val meetingId = max + 1
+    val chessMeetingName = "[Chess-Event]" + meetingName
+    val chessMeetingDescription = "[Chess-Event]" + meetingDescription
+    val player1Name = player1Event.user_name
+    val player2Name = player2Event.user_name
+
+    val newChessEvent = new ChessEvent(meetingId, player1Name, player2Name, chessMeetingName, chessMeetingDescription,
+      startTs, endTs)
+    val newRow = Seq(newChessEvent).toDS()
+    newRow.write
+              .mode(SaveMode.Append)
+              .format("jdbc")
+              .option("driver","com.mysql.cj.jdbc.Driver")
+              .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
+              .option("dbtable", "ChessEvent")
+              .option("user", "root")
+              .option("password", "")
+              .save()
+//    newRow.write
+//          .mode(SaveMode.Append)
+//          .format("jdbc")
+//          .option("driver","com.mysql.cj.jdbc.Driver")
+//          .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
+//          .option("dbtable", "ChessEvent")
+//          .option("user", "root")
+//          .option("password", "")
+//          .save()
+
+    //    val ownerEvent = event.filter(ev => ev.user_name == meetingOwner).first()
+//    val ownerEventObject = new Event(max + 1, ownerEvent.user_id,meetingOwner,
+//  meetingName, meetingDescription, startTs, endTs)
+//    val ownerEventDataset = Seq(ownerEventObject).toDF().as[Event]
+//    ownerEventDataset.write
+//      .mode(SaveMode.Append)
+//      .format("jdbc")
+//      .option("driver","com.mysql.cj.jdbc.Driver")
+//      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
+//      .option("dbtable", "Event")
+//      .option("user", "root")
+//      .option("password", "")
+//      .save()
+//
+//    // inviteeEvent
+//    val inviteeId = event.filter(ev => ev.user_name == invitee).first()
+//    val inviteeEvent = new Event(max + 2,inviteeId.user_id,invitee,
 //      meetingName, meetingDescription, startTs, endTs)
-
-    val ownerEvent = event.filter(ev => ev.user_name == meetingOwner).first()
-    val ownerEventObject = new Event(max + 1, ownerEvent.user_id,meetingOwner,
-  meetingName, meetingDescription, startTs, endTs)
-    val ownerEventDataset = Seq(ownerEventObject).toDF().as[Event]
-    ownerEventDataset.write
-      .mode(SaveMode.Append)
-      .format("jdbc")
-      .option("driver","com.mysql.cj.jdbc.Driver")
-      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-      .option("dbtable", "Event")
-      .option("user", "root")
-      .option("password", "")
-      .save()
-
-    // inviteeEvent
-    val inviteeId = event.filter(ev => ev.user_name == invitee).first()
-    val inviteeEvent = new Event(max + 2,inviteeId.user_id,invitee,
-      meetingName, meetingDescription, startTs, endTs)
-    val inviteeEventDataset = Seq(inviteeEvent).toDF().as[Event]
-    inviteeEventDataset.write
-      .mode(SaveMode.Append)
-      .format("jdbc")
-      .option("driver","com.mysql.cj.jdbc.Driver")
-      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-      .option("dbtable", "Event")
-      .option("user", "root")
-      .option("password", "")
-      .save()
+//    val inviteeEventDataset = Seq(inviteeEvent).toDF().as[Event]
+//    inviteeEventDataset.write
+//      .mode(SaveMode.Append)
+//      .format("jdbc")
+//      .option("driver","com.mysql.cj.jdbc.Driver")
+//      .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
+//      .option("dbtable", "Event")
+//      .option("user", "root")
+//      .option("password", "")
+//      .save()
     println("Event created successfully. Event details:")
     println("Event name: " + meetingName)
-    println("Event description: " + meetingDescription)
-    println("Event start time: " + dateToCompleteString(startTs.getTime))
-    println("Event end time: " + dateToCompleteString(endTs.getTime))
+//    println("Event description: " + meetingDescription)
+//    println("Event start time: " + dateToCompleteString(startTs.getTime))
+//    println("Event end time: " + dateToCompleteString(endTs.getTime))
   }
 
   def calendarToString(cal: Calendar): String = {
@@ -153,9 +177,10 @@ object Driver {
   // returns all possible 30-minute meeting slots with no conflict between invitees
   def findSuitableTime(event: Dataset[Event], sparkSession: SparkSession, proposedMeetingDate: String):
   List[Calendar] = {
-//    @Policy("any")
+
     val inviteeEventsOnMeetingDate = event.filter(event => dateToString(event.start_time.getTime) == proposedMeetingDate)
-      .filter(ev => ev.name.contains("practice"))
+
+
 //    val practiceEvents = event.filter(ev => ev.name.contains("practice"))
     var calendarList: List[Calendar] = List()
     val dateTokens = proposedMeetingDate.split("-")
@@ -186,23 +211,17 @@ object Driver {
                              endTime: Calendar, calendarList: List[Calendar], acc: List[Calendar]):
   List[Calendar] = {
 
-    // calendarList : [9, 930, 10...]
-//    calendarList.filter(cal => var nextStride = strideNext
-//    val difference = strideNext.getTimeInMillis - strideHead.getTimeInMillis
-//    val diffInMins = difference / (60 * 1000)
-//    if(diffInMins > 30) {
-//      nextStride = Calendar.getInstance()
-//      nextStride.setTimeInMillis(strideHead.getTimeInMillis)
+//    val filteredCalendarDs = calendarList.filter(cal => {
+//      val strideHead = cal
+//      val nextStride = Calendar.getInstance()
+//      nextStride.setTimeInMillis(cal.getTimeInMillis)
 //      nextStride.add(Calendar.MINUTE, 30)
-//    }
-//    if((strideHead.before(startTime) && nextStride.after(startTime)) ||
-//      !strideHead.before(startTime) && strideHead.before(endTime))
-//    )
-
-//    [9, 930, 1030]
-    // [6, 7] -- aak
-    // [6, 7] -- adi
-    // [430, 5, 7]
+//      // cond1: if stridehead is before start time then nextStride should be on or before the start time too - otherwise there's a conflict
+//      // cond2: if strideHead is after the end time, then there's no conflict
+//      (strideHead.before(startTime) && !nextStride.after(startTime)) || strideHead.after(endTime)
+//    })
+//    filteredCalendarDs
+//  }
 
     calendarList match {
       case Nil => acc
