@@ -2,7 +2,6 @@ import java.sql.Timestamp
 import java.text.SimpleDateFormat
 
 import scala.io.StdIn
-import java.util.Calendar
 
 import com.facebook.flowframe.Policy
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
@@ -17,38 +16,32 @@ object Driver {
       .master("local[1]")
       .getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
-    println("Welcome to Safe scheduler! \n")
-    // uncomment below to accept meeting date from StdIn
-    println("Please enter the meeting date in (yyyy-MM-dd) format: ")
+    println("Welcome to Safe scheduler! \n This App allows two players to find a 30-minute time slot to set-up a Chess Challenge. \n The fun thing is that it does so *truly* securely! \n")
+    println("Please enter the date in (yyyy-MM-dd) format when you would like to set-up a chess match: ")
     val proposedMeetingDate = StdIn.readLine()
-//    val proposedMeetingDate = "2023-01-19"
-    println("Ok. Proposed meeting date is: " ++ proposedMeetingDate)
+    println("Ok. Proposed date of match is: " ++ proposedMeetingDate)
     println("Enter your name (player 1): ")
-    val meetingOwner = StdIn.readLine()
-    println(s"Enter the name of the person you want to set-up a chess event with (player 2): ")
-    val invitee = StdIn.readLine()
-    val eventTable = Event(spark)
-    val inviteeEvents = eventTable.filter(ev => ev.user_name == meetingOwner || ev.user_name == invitee)
-//    val inviteeEvents = filterInviteeEvents(eventTable, invitee, meetingOwner)
+    val player1 = StdIn.readLine()
+    println(s"Enter the name of the player you want to set-up the match with (player 2): ")
+    val player2 = StdIn.readLine()
+    val calendarTable = Calendar(spark)
+    val inviteeEvents = calendarTable.filter(ev => ev.user_name == player1 || ev.user_name == player2)
     val conflictFreeTimes = findSuitableTime(inviteeEvents, spark, proposedMeetingDate)
     println("Here is a list of 30-minute slots (between 9 AM and 11 PM) where both player 1 and player 2 are available:")
     printAvailableTimes(conflictFreeTimes, 1)
     println("Now, enter the index of the meeting start time (as it appears in the square bracket to the left) to set-up the challenge: ")
     val meetingIndex = StdIn.readInt()
-    println("Enter the event name: ")
+    println("Enter an event name (optional) or press Enter to continue: ")
     val meetingName = StdIn.readLine()
-    println("Enter the event description: ")
+    println("Enter an event description (optional) or press Enter to continue: ")
     val meetingDescription = StdIn.readLine()
     val chessEventDs = ChessEvent(spark)
-    createEvent(spark, eventTable, conflictFreeTimes, meetingIndex, meetingName, meetingDescription, meetingOwner, invitee, chessEventDs)
+    createEvent(spark, calendarTable, conflictFreeTimes, meetingIndex, meetingName, meetingDescription, player1, player2, chessEventDs)
   }
 
-//  def filterInviteeEvents(event: Dataset[Event], invitee: String, owner: String): Dataset[Event] = {
-//    event.filter(ev => ev.user_name == owner || ev.user_name == invitee)
-//    }
 
   @tailrec
-  def printAvailableTimes(calendars: List[Calendar], index: Int): Unit = {
+  def printAvailableTimes(calendars: List[java.util.Calendar], index: Int): Unit = {
     calendars match {
       case Nil => Unit
       case head::rest =>
@@ -57,23 +50,27 @@ object Driver {
     }
   }
 
-  def createEvent(sparkSession: SparkSession, event: Dataset[Event], conflictFreeTimes: List[java.util.Calendar],
-                  meetingIndex: Int, meetingName: String, meetingDescription: String, meetingOwner: String, invitee: String,
+  def createEvent(sparkSession: SparkSession, event: Dataset[Calendar], conflictFreeTimes: List[java.util.Calendar],
+                  meetingIndex: Int, meetingName: String = "", meetingDescription: String = "", player1: String, player2: String,
                   chessEvent: Dataset[ChessEvent]): Unit = {
     import sparkSession.implicits._
     import org.apache.spark.sql.functions.col
-//    @Policy("any")
+
 
     val startTs = new Timestamp(conflictFreeTimes(meetingIndex - 1).getTimeInMillis)
-    val endTs = new Timestamp(conflictFreeTimes(meetingIndex).getTimeInMillis)
+    val endTsCal = java.util.Calendar.getInstance()
+    endTsCal.setTimeInMillis(startTs.getTime)
+    endTsCal.add(java.util.Calendar.MINUTE, 30)
+    val endTs = new Timestamp(endTsCal.getTimeInMillis)
     val max = chessEvent.agg(org.apache.spark.sql.functions.max(col("id"))).collect()(0)(0).asInstanceOf[Int]
-    val player1Event = event.filter(ev => ev.user_name == meetingOwner).first()
-    val player2Event = event.filter(ev => ev.user_name == invitee).first()
+    val player1Event = event.filter(ev => ev.user_name == player1).first()
+    val player2Event = event.filter(ev => ev.user_name == player2).first()
     val meetingId = max + 1
-    val chessMeetingName = "[Chess-Event]" + meetingName
-    val chessMeetingDescription = "[Chess-Event]" + meetingDescription
     val player1Name = player1Event.user_name
     val player2Name = player2Event.user_name
+    val chessMeetingName = "[Chess-Event] " + (if (meetingName == "") (player1Name + " - " + player2Name) else meetingName)
+    val chessMeetingDescription = "[Chess-Event] " + meetingDescription
+
 
     val newChessEvent = new ChessEvent(meetingId, player1Name, player2Name, chessMeetingName, chessMeetingDescription,
       startTs, endTs)
@@ -96,25 +93,25 @@ object Driver {
     println("Event name: " + chessMeetingName)
   }
 
-  def calendarToString(cal: Calendar): String = {
-    val amOrPm = if (cal.get(Calendar.AM_PM) == 0) "AM" else "PM"
-    val hour = if(cal.get(Calendar.HOUR) == 0) "12" else cal.get(Calendar.HOUR)
-    val minute = if(cal.get(Calendar.MINUTE) == 0) "00" else cal.get(Calendar.MINUTE)
+  def calendarToString(cal: java.util.Calendar): String = {
+    val amOrPm = if (cal.get(java.util.Calendar.AM_PM) == 0) "AM" else "PM"
+    val hour = if(cal.get(java.util.Calendar.HOUR) == 0) "12" else cal.get(java.util.Calendar.HOUR)
+    val minute = if(cal.get(java.util.Calendar.MINUTE) == 0) "00" else cal.get(java.util.Calendar.MINUTE)
           hour + ":" +
             minute + " " + amOrPm + "\n"
   }
 
   // creates a calendar list starting at 9 am and ending at 11 pm
   @tailrec
-  def createStaticCalendar(list: List[Calendar], dateTokens: Array[String], minuteCounter: Int): List[Calendar] = {
+  def createStaticCalendar(list: List[java.util.Calendar], dateTokens: Array[String], minuteCounter: Int): List[java.util.Calendar] = {
     if(list.length == 29)
       list
     else {
-      val cal = Calendar.getInstance()
+      val cal = java.util.Calendar.getInstance()
       cal.set(Integer.parseInt(dateTokens(0)), Integer.parseInt(dateTokens(1)) - 1,
         Integer.parseInt(dateTokens(2)), 9, 0, 0)
-      cal.add(Calendar.MINUTE, minuteCounter)
-      cal.set(Calendar.MILLISECOND, 0)
+      cal.add(java.util.Calendar.MINUTE, minuteCounter)
+      cal.set(java.util.Calendar.MILLISECOND, 0)
       // making 30 minute strides
       createStaticCalendar(cal :: list, dateTokens, minuteCounter + 30)
     }
@@ -122,16 +119,14 @@ object Driver {
 
   // use fold here
   @tailrec
-  def getCalendarList(event: List[Event], calendarList: List[Calendar]): List[Calendar] = {
+  def getCalendarList(event: List[Calendar], calendarList: List[java.util.Calendar]): List[java.util.Calendar] = {
     event match {
       case Nil => calendarList
       case head :: rest =>
-        // st : 6
-        // end: 7
-//        [...430, 5, 530, 6, 630, 7]
-        val startTime = Calendar.getInstance()
+
+        val startTime = java.util.Calendar.getInstance()
         startTime.setTimeInMillis(head.start_time.getTime)
-        val endTime = Calendar.getInstance()
+        val endTime = java.util.Calendar.getInstance()
         endTime.setTimeInMillis(head.end_time.getTime)
         // fold:
         val conflictFreeCalendarList = removeConflict(startTime, endTime, calendarList, List()).reverse
@@ -140,10 +135,10 @@ object Driver {
   }
 
   // returns all possible 30-minute meeting slots with no conflict between player 1 and player 2
-  def findSuitableTime(event: Dataset[Event], sparkSession: SparkSession, proposedMeetingDate: String):
-  List[Calendar] = {
+  def findSuitableTime(event: Dataset[Calendar], sparkSession: SparkSession, proposedMeetingDate: String):
+  List[java.util.Calendar] = {
     val inviteeEventsOnMeetingDate = event.filter(event => dateToString(event.start_time.getTime) == proposedMeetingDate)
-    var calendarList: List[Calendar] = List()
+    var calendarList: List[java.util.Calendar] = List()
     val dateTokens = proposedMeetingDate.split("-")
     calendarList = createStaticCalendar(calendarList, dateTokens, 0).reverse
     import scala.collection.JavaConverters._
@@ -165,9 +160,9 @@ object Driver {
 
   // use filter here
   @tailrec
-  def removeConflict(startTime:Calendar,
-                             endTime: Calendar, calendarList: List[Calendar], acc: List[Calendar]):
-  List[Calendar] = {
+  def removeConflict(startTime:java.util.Calendar,
+                             endTime: java.util.Calendar, calendarList: List[java.util.Calendar], acc: List[java.util.Calendar]):
+  List[java.util.Calendar] = {
 //    println("Attempting to remove conflicts from calendarList")
 //    println("Starting...")
 //    val filteredCalendarDs = calendarList.filter(cal => {
@@ -191,9 +186,9 @@ object Driver {
         val difference = strideNext.getTimeInMillis - strideHead.getTimeInMillis
         val diffInMins = difference / (60 * 1000)
         if(diffInMins > 30) {
-          nextStride = Calendar.getInstance()
+          nextStride = java.util.Calendar.getInstance()
           nextStride.setTimeInMillis(strideHead.getTimeInMillis)
-          nextStride.add(Calendar.MINUTE, 30)
+          nextStride.add(java.util.Calendar.MINUTE, 30)
         }
         if((strideHead.before(startTime) && nextStride.after(startTime)) ||
         !strideHead.before(startTime) && strideHead.before(endTime)) {

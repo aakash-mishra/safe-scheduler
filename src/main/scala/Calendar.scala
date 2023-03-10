@@ -3,7 +3,7 @@ import java.sql.Timestamp
 import com.facebook.flowframe.Policy
 import org.apache.spark.sql.{Dataset, SparkSession}
 
-case class Event(
+case class Calendar(
                 id: Int @Policy("any"),
                 user_id: Int @Policy("any"),
                 user_name: String @Policy("any"),
@@ -13,23 +13,21 @@ case class Event(
                 end_time: Timestamp @Policy("any")
                 )
 
-object Event {
-  def apply(spark: SparkSession): Dataset[Event] = {
+object Calendar {
+  def apply(spark: SparkSession): Dataset[Calendar] = {
     import spark.implicits._
     import org.apache.spark.sql.functions._
     val eventDf = spark.read
     .format("jdbc")
     .option("driver","com.mysql.cj.jdbc.Driver")
     .option("url", "jdbc:mysql://localhost:3306/safe_scheduler")
-    .option("dbtable", "Event")
+    .option("dbtable", "Calendar")
     .option("user", "root")
     .option("password", "")
     .load()
-//    .withColumn("start_time", to_timestamp(col("start_time"), "MM-dd-yyyy HH:mm"))
       .withColumn("start_time", to_timestamp(col("start_time"), "yyyy-MM-dd HH:mm:ss"))
-//    .withColumn("end_time", to_timestamp(col("end_time"), "MM-dd-yyyy HH:mm"))
       .withColumn("end_time", to_timestamp(col("end_time"), "yyyy-MM-dd HH:mm:ss"))
-    .createOrReplaceTempView("event_table")
-    spark.table("event_table").as[Event]
+    .createOrReplaceTempView("calendar_table")
+    spark.table("calendar_table").as[Calendar]
   }
 }
