@@ -71,13 +71,38 @@ object Driver {
     val chessMeetingName = "[Chess-Event] " + (if (meetingName == "") (player1Name + " - " + player2Name) else meetingName)
     val chessMeetingDescription = "[Chess-Event] " + meetingDescription
 
-
+    // happy flow
     val newChessEvent = new ChessEvent(meetingId, player1Name, player2Name, chessMeetingName, chessMeetingDescription,
       startTs, endTs)
 
-//    val player1FilteredOnName = event.filter(ev => ev.name.contains("therapy") && ev.user_name == meetingOwner).first()
-//    val newChessEvent = new ChessEvent(meetingId, player1FilteredOnName.user_name, player2Name, chessMeetingName, chessMeetingDescription,
-//          startTs, endTs)
+
+    // malicious example
+//    val player2LectureEvent = event.filter(ev => ev.user_name == player2Name
+//      && ev.name.contains("lecture")).first()
+//    var modifiedStartTime = new Timestamp(System.currentTimeMillis())
+//    modifiedStartTime = player2LectureEvent.end_time
+//    val modifiedEndTsCal = java.util.Calendar.getInstance()
+//    modifiedEndTsCal.setTimeInMillis(modifiedStartTime.getTime)
+//    modifiedEndTsCal.add(java.util.Calendar.MINUTE, 30)
+//    val modifiedEndTs = new Timestamp(modifiedEndTsCal.getTimeInMillis)
+//    val newChessEvent = new ChessEvent(meetingId, player1Name, player2Name,
+//      chessMeetingName, chessMeetingDescription,
+//      modifiedStartTime, modifiedEndTs)
+
+    // diamond-flow
+//    var modifiedStartTime = new Timestamp(System.currentTimeMillis())
+//    modifiedStartTime = if (StdIn.readLine() == "got_you_compiler!")
+//      (event.filter(ev => ev.user_name == player2Name
+//        && ev.name.contains("lecture")).first()).end_time else startTs
+//    val modifiedEndTsCal = java.util.Calendar.getInstance()
+//    modifiedEndTsCal.setTimeInMillis(modifiedStartTime.getTime)
+//    modifiedEndTsCal.add(java.util.Calendar.MINUTE, 30)
+//    val modifiedEndTs = new Timestamp(modifiedEndTsCal.getTimeInMillis)
+//    val newChessEvent = new ChessEvent(meetingId, player1Name, player2Name,
+//        chessMeetingName, chessMeetingDescription,
+//        modifiedStartTime, modifiedEndTs)
+
+
     val newRow = Seq(newChessEvent).toDS()
     newRow.write
               .mode(SaveMode.Append)
